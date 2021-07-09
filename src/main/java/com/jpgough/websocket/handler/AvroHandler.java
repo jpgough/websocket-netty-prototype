@@ -31,23 +31,9 @@ public class AvroHandler implements WebSocketHandler {
 
     public AvroHandler(String filename) {
         this.configuredFilename = filename;
-//        avroMessageSchema = ReflectData.get().getSchema(AvroMessage.class);
-//        avroMessageSchema = SchemaBuilder.record("AvroMessage")
-//                .namespace("com.jpgough.websocket.avro")
-//                .fields()
-//                .requiredInt("totalMessages")
-//                .requiredBytes("bytes")
-//                .endRecord();
         avroMessageSchema = com.jpgough.websocket.avro.AvroMessage.getClassSchema();
         System.out.println(avroMessageSchema.toString());
         avroWriter = new SpecificDatumWriter<>(avroMessageSchema);
-
-//        try {
-//            File file = ResourceUtils.getFile("classpath:" + filename);
-//            binaryFile = Files.readAllBytes(file.toPath());
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
     }
 
     private File getFile(String filename) throws FileNotFoundException {
@@ -55,49 +41,21 @@ public class AvroHandler implements WebSocketHandler {
     }
 
     private Flux<ByteBuffer> getByteChunks(File file) throws IOException {
-        // TODO: this can definitely be improved to lazily load the file
+        // TODO: this can definitely be improved to lazily load the file, using Flux.using
         Sinks.Many<ByteBuffer> sink = Sinks.many().unicast().onBackpressureBuffer();
         FileInputStream fileInputStream = new FileInputStream(file);
         byte[] chunk = new byte[MAX_MESSAGE_BYTES];
         int chunkLength = 0;
         while ((chunkLength = fileInputStream.read(chunk)) != -1) {
-//            System.out.println(Arrays.toString(Base64.getEncoder().encode(chunk)));
             ByteBuffer buffer = ByteBuffer.allocate(chunkLength);
             buffer.put(chunk, 0, chunkLength);
-//            chunk = "Hello".getBytes(StandardCharsets.UTF_8);
-//            ByteBuffer buffer = ByteBuffer.allocate(chunk.length);
-//            buffer.put(chunk);
             sink.tryEmitNext(buffer);
         }
+        sink.tryEmitComplete();
         return sink.asFlux();
     }
 
-    private Flux<ByteBuffer> getByteChunks2(Path path) {
-        return Flux.using(
-                () -> Files.lines(path),
-                stringStream -> Flux.fromStream(stringStream)
-                        .map(String::getBytes)
-                        .map(bytes -> ByteBuffer.allocate(bytes.length)
-                                .put(bytes)),
-                Stream::close
-        );
-    }
-
     private ByteBuffer avroMessageToBytes(AvroMessage message) {
-//        ByteArrayOutputStream stream = new ByteArrayOutputStream();
-//        Encoder encoder;
-//        try {
-//            encoder = EncoderFactory.get().jsonEncoder(avroMessageSchema, stream);
-////            encoder = EncoderFactory.get().binaryEncoder();
-//
-//            avroWriter.write(message, encoder);
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//            throw new RuntimeException(e);
-//        }
-//        byte[] output = stream.toByteArray();
-//        System.out.println(Arrays.toString(output));
-//        return stream.toByteArray();
         try {
             return message.toByteBuffer();
         } catch (IOException e) {
@@ -107,7 +65,6 @@ public class AvroHandler implements WebSocketHandler {
     }
 
     private Flux<WebSocketMessage> getChunkedMessages(String filename, WebSocketSession webSocketSession) throws IOException {
-//        Path path = new ClassPathResource(filename).getFile().toPath();
         File file = getFile(filename);
         int num_chunks = (int) Math.ceil((double) file.length() / MAX_MESSAGE_BYTES);
         return getByteChunks(file)
